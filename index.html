@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SWP Calculator</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f9f9f9;
+    }
+    .container {
+      background: white;
+      max-width: 900px;
+      margin: auto;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #333;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .results {
+      margin-top: 30px;
+      padding: 15px;
+      background-color: #eef;
+      border-radius: 5px;
+    }
+    canvas {
+      margin-top: 30px;
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>SWP (Systematic Withdrawal Plan) Calculator</h2>
+    <label>Initial Investment Corpus (₹):
+      <input type="number" id="corpus" value="25500000">
+    </label>
+    <label>SWP Duration (Years):
+      <input type="number" id="duration" value="30">
+    </label>
+    <label>Expected Annual Return (%):
+      <input type="number" id="returnRate" value="10">
+    </label>
+    <label>Annual Inflation Rate (%):
+      <input type="number" id="inflationRate" value="5">
+    </label>
+    <label>Withdrawal Frequency:
+      <select id="frequency">
+        <option value="12">Monthly</option>
+        <option value="4">Quarterly</option>
+        <option value="2">Half-Yearly</option>
+        <option value="1">Yearly</option>
+      </select>
+    </label>
+    <button onclick="calculateSWP()">Calculate SWP Amount</button>
+    <button onclick="downloadCSV()">Export as CSV</button>
+
+    <div class="results" id="results"></div>
+    <canvas id="swpChart"></canvas>
+  </div>
+
+  <script>
+    let swpData = [];
+
+    function calculateSWP() {
+      const corpus = parseFloat(document.getElementById('corpus').value);
+      const years = parseInt(document.getElementById('duration').value);
+      const annualReturn = parseFloat(document.getElementById('returnRate').value) / 100;
+      const inflation = parseFloat(document.getElementById('inflationRate').value) / 100;
+      const freq = parseInt(document.getElementById('frequency').value);
+
+      const n = years * freq;
+      const rate = Math.pow(1 + annualReturn, 1 / freq) - 1;
+
+      const swpAmount = corpus * rate / (1 - Math.pow(1 + rate, -n));
+      let totalNominal = swpAmount * n;
+      let totalReal = 0;
+      let currentWithdrawal = swpAmount;
+      let corpusRemaining = corpus;
+
+      swpData = [];
+
+      for (let i = 0; i < n; i++) {
+        let timeInYears = i / freq;
+        let realValue = currentWithdrawal / Math.pow(1 + inflation, timeInYears);
+        totalReal += realValue;
+        swpData.push({
+          period: i + 1,
+          withdrawal: swpAmount,
+          realWithdrawal: realValue,
+          corpus: corpusRemaining
+        });
+        corpusRemaining = corpusRemaining * (1 + rate) - swpAmount;
+      }
+
+      const lastWithdrawalReal = swpAmount / Math.pow(1 + inflation, years);
+
+      document.getElementById('results').innerHTML = `
+        <h3>Results</h3>
+        <p><strong>Withdrawal Amount (per period):</strong> ₹${swpAmount.toFixed(2)}</p>
+        <p><strong>Total Withdrawals (Nominal):</strong> ₹${totalNominal.toFixed(2)}</p>
+        <p><strong>Total Withdrawals (Present Value):</strong> ₹${totalReal.toFixed(2)}</p>
+        <p><strong>Last Withdrawal (Present Value):</strong> ₹${lastWithdrawalReal.toFixed(2)}</p>
+        <p><strong>Final Corpus:</strong> ₹0 (Fully depleted)</p>
+      `;
+
+      drawChart();
+    }
+
+    function drawChart() {
+      const ctx = document.getElementById('swpChart').getContext('2d');
+      const labels = swpData.map(d => d.period);
+      const real = swpData.map(d => d.realWithdrawal.toFixed(2));
+      const nominal = swpData.map(d => d.withdrawal.toFixed(2));
+      const corpus = swpData.map(d => d.corpus.toFixed(2));
+
+      if (window.swpChart) window.swpChart.destroy();
+
+      window.swpChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Nominal Withdrawal (₹)',
+              data: nominal,
+              borderColor: 'blue',
+              fill: false
+            },
+            {
+              label: 'Real Withdrawal (₹)',
+              data: real,
+              borderColor: 'green',
+              fill: false
+            },
+            {
+              label: 'Corpus Remaining (₹)',
+              data: corpus,
+              borderColor: 'red',
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top' },
+            title: {
+              display: true,
+              text: 'SWP Analysis Over Time'
+            }
+          }
+        }
+      });
+    }
+
+    function downloadCSV() {
+      let csv = 'Period,Withdrawal,Real Withdrawal,Corpus Remaining\n';
+      swpData.forEach(row => {
+        csv += `${row.period},${row.withdrawal.toFixed(2)},${row.realWithdrawal.toFixed(2)},${row.corpus.toFixed(2)}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'swp_data.csv';
+      link.click();
+    }
+  </script>
+</body>
+</html>
