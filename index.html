@@ -70,8 +70,11 @@
     <label>Expected Annual Return (%):
       <input type="number" id="returnRate" value="10">
     </label>
-    <label>Annual Inflation Rate (%):
+    <label>Annual Inflation Rate (for present value calc) (%):
       <input type="number" id="inflationRate" value="5">
+    </label>
+    <label>Annual Withdrawal Increase Rate (Optional, if you want SWP to grow yearly) (%):
+      <input type="number" id="withdrawalIncreaseRate" value="5">
     </label>
     <label>Withdrawal Frequency:
       <select id="frequency">
@@ -80,10 +83,6 @@
         <option value="2">Half-Yearly</option>
         <option value="1">Yearly</option>
       </select>
-    </label>
-    <label>
-      <input type="checkbox" id="adjustForInflation" checked>
-      Adjust Withdrawal for Inflation (Yearly)
     </label>
     <button onclick="calculateSWP()">Calculate SWP Amount</button>
     <button onclick="downloadCSV()">Export as CSV</button>
@@ -101,12 +100,11 @@
       const years = parseInt(document.getElementById('duration').value);
       const annualReturn = parseFloat(document.getElementById('returnRate').value) / 100;
       const inflation = parseFloat(document.getElementById('inflationRate').value) / 100;
+      const increase = parseFloat(document.getElementById('withdrawalIncreaseRate').value) / 100;
       const freq = parseInt(document.getElementById('frequency').value);
-      const adjust = document.getElementById('adjustForInflation').checked;
 
       const n = years * freq;
       const rate = Math.pow(1 + annualReturn, 1 / freq) - 1;
-      const inflationRatePerPeriod = Math.pow(1 + inflation, 1 / freq) - 1;
 
       let swpAmount = corpus * rate / (1 - Math.pow(1 + rate, -n));
       let totalReal = 0;
@@ -117,8 +115,8 @@
       swpData = [];
 
       for (let i = 0; i < n; i++) {
-        if (adjust && i % freq === 0 && i !== 0) {
-          currentWithdrawal *= (1 + inflation);
+        if (i % freq === 0 && i !== 0) {
+          currentWithdrawal *= (1 + increase);
         }
         const timeInYears = i / freq;
         const realValue = currentWithdrawal / Math.pow(1 + inflation, timeInYears);
