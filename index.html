@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SWP Calculator</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -80,8 +81,13 @@
         <option value="1">Yearly</option>
       </select>
     </label>
+    <label>
+      <input type="checkbox" id="adjustForInflation" checked>
+      Adjust Withdrawal for Inflation (Yearly)
+    </label>
     <button onclick="calculateSWP()">Calculate SWP Amount</button>
     <button onclick="downloadCSV()">Export as CSV</button>
+    <button onclick="downloadPDF()">Download PDF Report</button>
 
     <div class="results" id="results"></div>
     <canvas id="swpChart"></canvas>
@@ -96,36 +102,43 @@
       const annualReturn = parseFloat(document.getElementById('returnRate').value) / 100;
       const inflation = parseFloat(document.getElementById('inflationRate').value) / 100;
       const freq = parseInt(document.getElementById('frequency').value);
+      const adjust = document.getElementById('adjustForInflation').checked;
 
       const n = years * freq;
       const rate = Math.pow(1 + annualReturn, 1 / freq) - 1;
+      const inflationRatePerPeriod = Math.pow(1 + inflation, 1 / freq) - 1;
 
-      const swpAmount = corpus * rate / (1 - Math.pow(1 + rate, -n));
-      let totalNominal = swpAmount * n;
+      let swpAmount = corpus * rate / (1 - Math.pow(1 + rate, -n));
       let totalReal = 0;
-      let currentWithdrawal = swpAmount;
+      let totalNominal = 0;
       let corpusRemaining = corpus;
+      let currentWithdrawal = swpAmount;
 
       swpData = [];
 
       for (let i = 0; i < n; i++) {
-        let timeInYears = i / freq;
-        let realValue = currentWithdrawal / Math.pow(1 + inflation, timeInYears);
+        if (adjust && i % freq === 0 && i !== 0) {
+          currentWithdrawal *= (1 + inflation);
+        }
+        const timeInYears = i / freq;
+        const realValue = currentWithdrawal / Math.pow(1 + inflation, timeInYears);
+        totalNominal += currentWithdrawal;
         totalReal += realValue;
         swpData.push({
           period: i + 1,
-          withdrawal: swpAmount,
+          year: Math.floor(i / freq) + 1,
+          withdrawal: currentWithdrawal,
           realWithdrawal: realValue,
           corpus: corpusRemaining
         });
-        corpusRemaining = corpusRemaining * (1 + rate) - swpAmount;
+        corpusRemaining = corpusRemaining * (1 + rate) - currentWithdrawal;
       }
 
-      const lastWithdrawalReal = swpAmount / Math.pow(1 + inflation, years);
+      const lastWithdrawalReal = swpData[swpData.length - 1].realWithdrawal;
 
       document.getElementById('results').innerHTML = `
         <h3>Results</h3>
-        <p><strong>Withdrawal Amount (per period):</strong> ₹${swpAmount.toFixed(2)}</p>
+        <p><strong>Withdrawal Amount (Initial):</strong> ₹${swpAmount.toFixed(2)}</p>
         <p><strong>Total Withdrawals (Nominal):</strong> ₹${totalNominal.toFixed(2)}</p>
         <p><strong>Total Withdrawals (Present Value):</strong> ₹${totalReal.toFixed(2)}</p>
         <p><strong>Last Withdrawal (Present Value):</strong> ₹${lastWithdrawalReal.toFixed(2)}</p>
@@ -138,9 +151,9 @@
     function drawChart() {
       const ctx = document.getElementById('swpChart').getContext('2d');
       const labels = swpData.map(d => d.period);
-      const real = swpData.map(d => d.realWithdrawal.toFixed(2));
-      const nominal = swpData.map(d => d.withdrawal.toFixed(2));
-      const corpus = swpData.map(d => d.corpus.toFixed(2));
+      const real = swpData.map(d => d.realWithdrawal);
+      const nominal = swpData.map(d => d.withdrawal);
+      const corpus = swpData.map(d => d.corpus);
 
       if (window.swpChart) window.swpChart.destroy();
 
@@ -183,15 +196,40 @@
     }
 
     function downloadCSV() {
-      let csv = 'Period,Withdrawal,Real Withdrawal,Corpus Remaining\n';
+      let csv = 'Period,Year,Nominal Withdrawal,Real Withdrawal,Corpus Remaining\n';
       swpData.forEach(row => {
-        csv += `${row.period},${row.withdrawal.toFixed(2)},${row.realWithdrawal.toFixed(2)},${row.corpus.toFixed(2)}\n`;
+        csv += `${row.period},${row.year},${row.withdrawal.toFixed(2)},${row.realWithdrawal.toFixed(2)},${row.corpus.toFixed(2)}\n`;
       });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'swp_data.csv';
       link.click();
+    }
+
+    async function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+
+      pdf.text('SWP Calculator Report', 10, 10);
+      let y = 20;
+      pdf.setFontSize(10);
+      swpData.slice(0, 50).forEach((row, i) => {
+        pdf.text(`Period ${row.period}, Year ${row.year}: Nominal ₹${row.withdrawal.toFixed(2)}, Real ₹${row.realWithdrawal.toFixed(2)}, Corpus ₹${row.corpus.toFixed(2)}`, 10, y);
+        y += 5;
+        if (y > 270) {
+          pdf.addPage();
+          y = 20;
+        }
+      });
+
+      const canvas = document.getElementById('swpChart');
+      const chartImage = canvas.toDataURL('image/png');
+      pdf.addPage();
+      pdf.text('SWP Chart', 10, 10);
+      pdf.addImage(chartImage, 'PNG', 10, 20, 180, 100);
+
+      pdf.save('swp_report.pdf');
     }
   </script>
 </body>
